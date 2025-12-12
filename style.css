@@ -1,0 +1,221 @@
+:root {
+    --primary: #005f9e; /* Leica-ish Green/Blue mix or professional blue */
+    --primary-dark: #004a7c;
+    --accent: #e4002b; /* Leica Red */
+    --bg: #f4f4f9;
+    --card-bg: #ffffff;
+    --text: #333;
+    --text-light: #666;
+    --border: #ddd;
+    --shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.app-container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--card-bg);
+    min-height: 100vh;
+    box-shadow: 0 0 20px rgba(0,0,0,0.05);
+}
+
+header {
+    background: #333;
+    color: #fff;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+h1 { font-size: 1.2rem; font-weight: 500; }
+#model-badge {
+    background: var(--accent);
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    vertical-align: middle;
+}
+
+.status-bar {
+    font-size: 0.75rem;
+    color: #aaa;
+    text-align: right;
+}
+.status-bar span { display: block; }
+
+/* Navigation */
+.main-nav {
+    display: flex;
+    background: #444;
+    overflow-x: auto;
+}
+
+.nav-btn {
+    flex: 1;
+    padding: 15px;
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.nav-btn.active {
+    color: #fff;
+    border-bottom-color: var(--accent);
+    background: #555;
+}
+
+/* Main Content */
+main { padding: 20px; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn 0.3s; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+h2 {
+    margin-bottom: 15px;
+    font-size: 1.4rem;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 5px;
+}
+
+h3 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+/* Forms */
+.form-group { margin-bottom: 12px; }
+label {
+    display: block;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+    color: var(--text-light);
+}
+
+input, select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* Buttons */
+.action-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 4px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.action-btn:hover { background: var(--primary-dark); }
+
+.action-btn.sm { width: auto; padding: 8px 16px; font-size: 0.9rem; }
+.action-btn.danger { background: #d32f2f; }
+
+/* Results */
+.result-card {
+    background: #e3f2fd;
+    border-color: #bbdefb;
+}
+
+.result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.delta-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.delta-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    background: rgba(255,255,255,0.5);
+    border-radius: 4px;
+}
+.delta-item .value { font-weight: bold; }
+
+/* Data Table */
+.table-wrapper {
+    overflow-x: auto;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+th { background: #f9f9f9; }
+
+/* Scroll list for calc */
+.scroll-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.scroll-list label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px;
+    border-bottom: 1px solid #eee;
+}

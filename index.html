@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebTotalStation</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#005f9e">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>WebTS <span id="model-badge">TS03 Sim</span></h1>
+            <div class="status-bar">
+                <span id="station-status">STN: Not Set</span>
+                <span id="orientation-status">ORI: Not Set</span>
+            </div>
+        </header>
+
+        <nav class="main-nav">
+            <button class="nav-btn active" data-tab="setup">Setup</button>
+            <button class="nav-btn" data-tab="survey">Survey</button>
+            <button class="nav-btn" data-tab="stakeout">Stakeout</button>
+            <button class="nav-btn" data-tab="calc">Calc</button>
+            <button class="nav-btn" data-tab="data">Data</button>
+        </nav>
+
+        <main id="main-content">
+            <!-- SETUP TAB -->
+            <section id="setup" class="tab-content active">
+                <h2>Station Setup</h2>
+                
+                <div class="card">
+                    <h3>1. Instrument Settings</h3>
+                    <div class="form-group">
+                        <label for="k-factor">Stadia Constant (K)</label>
+                        <select id="k-factor">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="150">150</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Distance Method</label>
+                        <div style="display: flex; gap: 15px;">
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="dist-mode" value="stadia" checked> Stadia
+                            </label>
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="dist-mode" value="manual"> Manual (Slope Dist)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setup Mode Switch -->
+                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <button id="mode-known" class="action-btn sm">Known Point</button>
+                    <button id="mode-resection" class="action-btn sm" style="background: #ccc; color: #333;">Resection</button>
+                </div>
+
+                <!-- KNOWN POINT FORM -->
+                <div id="setup-known-point">
+                    <div class="card">
+                        <h3>2. Station Coordinates</h3>
+                        <div class="input-grid">
+                            <div class="form-group">
+                                <label>East (E)</label>
+                                <input type="number" id="stn-e" step="0.001" placeholder="0.000">
+                            </div>
+                            <div class="form-group">
+                                <label>North (N)</label>
+                                <input type="number" id="stn-n" step="0.001" placeholder="0.000">
+                            </div>
+                            <div class="form-group">
+                                <label>Height (H)</label>
+                                <input type="number" id="stn-z" step="0.001" placeholder="0.000">
+                            </div>
+                            <div class="form-group">
+                                <label>Inst. Height (hi)</label>
+                                <input type="number" id="stn-hi" step="0.001" placeholder="1.500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>3. Backsight Orientation</h3>
+                        <div class="input-grid">
+                            <div class="form-group">
+                                <label>BS East</label>
+                                <input type="number" id="bs-e" step="0.001">
+                            </div>
+                            <div class="form-group">
+                                <label>BS North</label>
+                                <input type="number" id="bs-n" step="0.001">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Measured Hz Angle (Grads)</label>
+                            <input type="number" id="bs-hz" step="0.0001" placeholder="0.0000">
+                        </div>
+                        <button id="btn-set-orientation" class="action-btn">Set Orientation</button>
+                    </div>
+                </div>
+
+                <!-- RESECTION FORM -->
+                <div id="setup-resection" style="display: none;">
+                    <div class="card">
+                        <h3>Resection Targets</h3>
+                        <div id="resection-list" class="delta-grid" style="margin-bottom: 10px;">
+                            <!-- Dynamic Rows -->
+                        </div>
+                        <button id="btn-add-res-target" class="action-btn sm" style="margin-bottom: 10px;">+ Add Target</button>
+                        
+                        <div class="form-group" style="margin-top: 10px; border-top: 1px solid #eee; pt: 10px;">
+                            <label>Inst. Height (hi)</label>
+                            <input type="number" id="res-hi" step="0.001" placeholder="1.500">
+                        </div>
+
+                        <button id="btn-calc-resection" class="action-btn">Calculate Resection</button>
+                    </div>
+
+                    <div id="resection-result" class="card result-card" style="display: none;">
+                        <h3>Calculated Station</h3>
+                        <div class="result-grid">
+                            <div><strong>E:</strong> <span id="res-stn-e">-</span></div>
+                            <div><strong>N:</strong> <span id="res-stn-n">-</span></div>
+                            <div><strong>Ori Cor:</strong> <span id="res-ori">-</span></div>
+                        </div>
+                        <button id="btn-apply-resection" class="action-btn primary" style="margin-top: 10px;">Apply & Set Station</button>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SURVEY TAB -->
+            <section id="survey" class="tab-content">
+                <h2>Survey / Measure</h2>
+                <div class="card">
+                    <div class="form-group">
+                        <label>Point ID</label>
+                        <input type="text" id="meas-pid" placeholder="1001">
+                    </div>
+                    
+                    <h3>Readings</h3>
+                    
+                    <!-- Stadia Inputs -->
+                    <div id="survey-stadia-inputs" class="input-grid three-col">
+                        <div class="form-group">
+                            <label>Top Wire</label>
+                            <input type="number" id="meas-top" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Middle</label>
+                            <input type="number" id="meas-mid" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Bottom</label>
+                            <input type="number" id="meas-bot" step="0.001">
+                        </div>
+                    </div>
+
+                    <!-- Manual Inputs -->
+                    <div id="survey-manual-inputs" class="input-grid" style="display: none;">
+                        <div class="form-group">
+                            <label>Slope Dist (m)</label>
+                            <input type="number" id="meas-sdist" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Tgt Height (hr)</label>
+                            <input type="number" id="meas-hr" step="0.001" placeholder="0.000">
+                        </div>
+                    </div>
+                    
+                    <div class="input-grid">
+                        <div class="form-group">
+                            <label>Hz Angle (g)</label>
+                            <input type="number" id="meas-hz" step="0.0001">
+                        </div>
+                        <div class="form-group">
+                            <label>V Angle (Zenith g)</label>
+                            <input type="number" id="meas-v" step="0.0001">
+                        </div>
+                    </div>
+
+                    <button id="btn-measure" class="action-btn primary">Calculate & Save</button>
+                </div>
+
+                <div class="card result-card" id="survey-result" style="display:none;">
+                    <h3>Result</h3>
+                    <div class="result-grid">
+                        <div><strong>Dist:</strong> <span id="res-dist">-</span> m</div>
+                        <div><strong>E:</strong> <span id="res-e">-</span></div>
+                        <div><strong>N:</strong> <span id="res-n">-</span></div>
+                        <div><strong>H:</strong> <span id="res-h">-</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STAKEOUT TAB -->
+            <section id="stakeout" class="tab-content">
+                <h2>Stakeout</h2>
+                <div class="card">
+                    <div class="form-group">
+                        <label>Target Point</label>
+                        <select id="so-target-select">
+                            <option value="">Select Point...</option>
+                        </select>
+                    </div>
+                    <div id="so-target-info" style="display:none; font-size: 0.9em; color: #666; margin-bottom: 10px;">
+                        Target: E <span id="so-tgt-e"></span> N <span id="so-tgt-n"></span>
+                    </div>
+
+                    <h3>Current Readings</h3>
+                    
+                    <div id="so-stadia-inputs" class="input-grid three-col">
+                        <div class="form-group">
+                            <label>Top</label>
+                            <input type="number" id="so-top" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Mid</label>
+                            <input type="number" id="so-mid" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Bot</label>
+                            <input type="number" id="so-bot" step="0.001">
+                        </div>
+                    </div>
+
+                    <div id="so-manual-inputs" class="input-grid" style="display: none;">
+                        <div class="form-group">
+                            <label>Slope Dist</label>
+                            <input type="number" id="so-sdist" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>Tgt Ht</label>
+                            <input type="number" id="so-hr" step="0.001">
+                        </div>
+                    </div>
+
+                    <div class="input-grid">
+                         <div class="form-group">
+                            <label>Hz (g)</label>
+                            <input type="number" id="so-hz" step="0.0001">
+                        </div>
+                        <div class="form-group">
+                            <label>V (g)</label>
+                            <input type="number" id="so-v" step="0.0001">
+                        </div>
+                    </div>
+                    <button id="btn-stakeout" class="action-btn">Check</button>
+                </div>
+
+                <div class="card result-card" id="so-result" style="display:none;">
+                    <h3>Deltas</h3>
+                    <div class="delta-grid">
+                        <div class="delta-item">
+                            <span class="label">Turn Hz:</span>
+                            <span class="value" id="so-d-hz"></span>
+                        </div>
+                        <div class="delta-item">
+                            <span class="label">Move:</span>
+                            <span class="value" id="so-d-dist"></span>
+                        </div>
+                        <div class="delta-item">
+                            <span class="label">Height:</span>
+                            <span class="value" id="so-d-h"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CALC TAB (Area/Vol) -->
+            <section id="calc" class="tab-content">
+                <h2>Area & Volume</h2>
+                <div class="card">
+                    <p>Select points in sequence (clockwise or counter-clockwise):</p>
+                    <div id="point-list-container" class="scroll-list">
+                        <!-- Checkboxes generated by JS -->
+                    </div>
+                    <button id="btn-calc-area" class="action-btn">Calculate</button>
+                </div>
+                <div class="card result-card">
+                    <div class="result-grid">
+                        <div><strong>2D Area:</strong> <span id="calc-area">-</span> m²</div>
+                        <div><strong>Perimeter:</strong> <span id="calc-perim">-</span> m</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DATA TAB -->
+            <section id="data" class="tab-content">
+                <h2>Data Manager</h2>
+                <div class="toolbar">
+                    <button id="btn-export" class="action-btn sm">Export CSV</button>
+                    <button id="btn-clear" class="action-btn sm danger">Clear All</button>
+                </div>
+                <div class="table-wrapper">
+                    <table id="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>East</th>
+                                <th>North</th>
+                                <th>Height</th>
+                                <th>Code</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker registered', reg))
+                .catch(err => console.error('Service Worker failed', err));
+        }
+    </script>
+</body>
+</html>
