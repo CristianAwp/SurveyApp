@@ -90,25 +90,26 @@ const MathUtils = {
     // Solver for 3 unknowns (dE, dN, dOri) using observations to multiple points
     solveResection: (obs) => {
         // obs: Array of { e, n, dist, hz } (Target Coords, Measured Dist, Measured Hz in Grads)
-        // Initial approximation: Use the first point. 
-        // Assume Stn = Pt1 coords (bad guess but iterative logic handles it if robust, 
-        // better: use first point and arbitrary orientation)
         
         // Initial Guess:
-        // Stn E, N = Pt1 E, N (offset by distance). 
-        // Let's assume Stn is at (Pt1.E - dist, Pt1.N) for start.
-        // Or simpler: Just start at Average of target coords? No, that might be inside the polygon.
-        // Best simple start: "Polar" from Pt 1 reversed.
+        // Use first point reversed polar as rough guess
+        // Stn E approx = Pt E - Dist * sin(Hz) (assuming Ori=0) -> Very rough
+        // Better: Just pick an arbitrary point near the first target?
+        // Let's assume Stn is at (Pt1.e - 10, Pt1.n - 10) to avoid divide by zero if on top.
+        // Actually, let's use the first point and assume the measured angle is roughly the azimuth (Ori=0).
+        // Stn = Pt - Dist(Az). 
+        // Az_approx = Hz (assuming Ori=0).
+        // StnE = PtE - Dist * sin(Hz_rad)
+        // StnN = PtN - Dist * cos(Hz_rad)
         
-        let stnE = obs[0].e;
-        let stnN = obs[0].n; // Very rough start (station at target 1)
-        // Better start: If we have dist to pt1, assume we are 'dist' away to South.
-        stnN -= obs[0].dist; 
+        const startRad = MathUtils.gradsToRad(obs[0].hz); // Rough Azimuth
+        let stnE = obs[0].e - obs[0].dist * Math.sin(startRad);
+        let stnN = obs[0].n - obs[0].dist * Math.cos(startRad);
         
-        let ori = 0; // Initial orientation guess
+        let ori = 0; 
         
         // Iterations
-        for(let iter=0; iter<10; iter++) {
+        for(let iter=0; iter<15; iter++) {
             let A = []; // Jacobian
             let L = []; // Residuals (Observed - Computed)
             
@@ -118,14 +119,15 @@ const MathUtils = {
                 const dx = pt.e - stnE;
                 const dy = pt.n - stnN;
                 const distCalc = Math.sqrt(dx*dx + dy*dy);
+                if(distCalc < 0.001) continue; // Avoid singularity
+                
                 const azCalcRad = Math.atan2(dx, dy); // North Azimuth in Radians
                 let azCalc = azCalcRad * (200/Math.PI);
                 if(azCalc < 0) azCalc += 400;
 
                 // 1. Distance Equation
-                // D_calc + (dD/dE)dE + (dD/dN)dN = D_obs
                 // v = D_obs - D_calc
-                // Coeffs: -sin(Az), -cos(Az)  (Derivatives w.r.t Station pos)
+                // Coeffs: -sin(Az), -cos(Az)
                 const sinAz = Math.sin(azCalcRad);
                 const cosAz = Math.cos(azCalcRad);
                 
@@ -133,51 +135,30 @@ const MathUtils = {
                 L.push(pt.dist - distCalc);
 
                 // 2. Angle Equation
-                // Az_calc + dAz - Ori - dOri = Hz_obs
-                // Hz_obs = Az_calc - Ori
-                // Residual = (Hz_obs + Ori) - Az_calc
-                // Actually: (Az_calc - Ori) - Hz_obs = v
-                // Linearization:
-                // dAz/dE * dE + dAz/dN * dN - 1 * dOri = Hz_obs - (Az_calc - Ori)
-                // dAz/dE = cos(Az)/D, dAz/dN = -sin(Az)/D
-                
-                // Let's stick to standard: Observed = F(Params)
-                // Hz_obs = Azimuth(Stn, Pt) - Orientation
-                // Linearized:
-                // Hz_obs = Az0 - Ori0 + (dAz/dE)dE + (dAz/dN)dN + (-1)dOri
-                // L = Hz_obs - (Az0 - Ori0)
-                // A row: [ cosAz/distCalc, -sinAz/distCalc, -1 ]
+                // Weight by Distance to Linearize
+                // Coeffs * D: [ cosAz, -sinAz, -D ]  (assuming dOri in Radians/Linear scale?) 
+                // Wait, if we solve for dOri in Grads in the vector x, we need to adjust the coeff.
+                // Standard Eq: (dAz/dE)dE + ... - dOri = L_ang
+                // (cos/D)dE - (sin/D)dN - dOri = L_ang
+                // Mult by D: cos*dE - sin*dN - D*dOri = D*L_ang
+                // If x[2] is dOri (Grads), then term is -D * dOri * (PI/200).
                 
                 // Handle 400g wrapping for residuals
                 let angRes = pt.hz - (azCalc - ori);
                 while(angRes > 200) angRes -= 400;
                 while(angRes < -200) angRes += 400;
                 
-                // Convert angular residual to linear approximation (radians * dist)? 
-                // No, standard LSA keeps units consistent if we weight them. 
-                // For simplicity here, treat angle residual in Radians to match distance scale?
-                // Or just solve in mixed units. 
-                // Let's use Dist approx for weights or just simplistic unweighted.
-                // Angle equation in Grads:
-                
-                // Note: To mix D (meters) and Angle (Grads), we need weights.
-                // Simple approach: Multiply Angle row by Dist to make it "Transverse deviation in meters".
-                // Eq * Dist:
-                // Dist * (dAz/dE) = -cos(Az)  <-- Corrected Sign
-                // Dist * (dAz/dN) = +sin(Az)  <-- Corrected Sign
-                // Dist * (-1) * dOri = -Dist
-                // RHS = Dist * AngleResidual(in Radians!)
-                
                 const angResRad = angRes * (Math.PI/200);
                 
-                // Weighted by Distance (Quasi-Metric):
-                // dAz/dE = -cos(Az)/Dist, dAz/dN = sin(Az)/Dist
-                // Multiplied by Dist:
-                // [-cosAz, sinAz, -distCalc]
+                // A row for [dE, dN, dOri(Grads)]
+                // Coeff for dOri(Grads) needs to convert Grads to Linear Arc length?
+                // -D * (PI/200)
                 
-                A.push([ -cosAz, sinAz, -distCalc * (Math.PI/200) ]); 
+                A.push([ cosAz, -sinAz, -distCalc * (Math.PI/200) ]); 
                 L.push(distCalc * angResRad); 
             }
+
+            if(A.length < 3) return null; // Not enough data
 
             // Solve Normal Equations: (At A) x = (At L)
             const At = Matrix.transpose(A);
@@ -194,7 +175,10 @@ const MathUtils = {
             stnN += x[1];
             ori += x[2];
             
-            if(Math.abs(x[0]) < 0.001 && Math.abs(x[1]) < 0.001) break; // Converged
+            // Normalize Ori
+            ori = MathUtils.normalizeGrads(ori);
+
+            if(Math.abs(x[0]) < 0.001 && Math.abs(x[1]) < 0.001 && Math.abs(x[2]) < 0.001) break; // Converged
         }
         
         return { e: stnE, n: stnN, ori: MathUtils.normalizeGrads(ori) };
@@ -259,6 +243,7 @@ const State = {
     },
     orientation: {
         azimuthCorrection: 0, // value to ADD to measured Hz to get Azimuth
+        backSightAzimuth: 0, // For display
         set: false
     },
     points: [], // Array of {id, e, n, z, code, ts}
@@ -381,6 +366,7 @@ function init() {
     renderData();
     updateStatus();
     populateSelects();
+    updateVLabels();
     console.log("App init done.");
 }
 
@@ -440,17 +426,17 @@ function setupEventListeners() {
             }
         });
     });
-    // Init state
-    State.settings.distanceMode = 'stadia'; 
-    State.settings.stakeoutSource = 'list';
-    State.settings.vMode = 'zenith';
+    // Init state default if missing
+    if(!State.settings.distanceMode) State.settings.distanceMode = 'stadia'; 
+    if(!State.settings.stakeoutSource) State.settings.stakeoutSource = 'list';
+    if(!State.settings.vMode) State.settings.vMode = 'zenith';
 
     // V-Mode Toggle
     UI.vModeInputs.forEach(input => {
         input.addEventListener('change', (e) => {
             if(e.target.checked) {
                 State.settings.vMode = e.target.value;
-                // Maybe update labels to say V (Z) or V (a)?
+                updateVLabels();
             }
         });
     });
@@ -468,6 +454,20 @@ function setupEventListeners() {
     // Data Import
     UI.btnImport.addEventListener('click', () => UI.fileImport.click());
     UI.fileImport.addEventListener('change', handleCSVImport);
+}
+
+function updateVLabels() {
+    const text = State.settings.vMode === 'alpha' ? 'V Angle (Alpha g)' : 'V Angle (Zenith g)';
+    
+    // Update main labels
+    document.querySelectorAll('.v-angle-label').forEach(el => {
+        el.textContent = text;
+    });
+    
+    // Also update Resection placeholders if needed, or labels in dynamic rows
+    document.querySelectorAll('.res-v-label').forEach(el => {
+        el.textContent = State.settings.vMode === 'alpha' ? 'V (Alpha)' : 'V (Zenith)';
+    });
 }
 
 function updateInputVisibility() {
@@ -545,6 +545,8 @@ function addResectionRow() {
         opt.textContent = p.id;
         select.appendChild(opt);
     });
+    
+    const vLabel = State.settings.vMode === 'alpha' ? 'V (Alpha)' : 'V (Zenith)';
 
     div.innerHTML = `
         <div class="form-group">
@@ -574,7 +576,7 @@ function addResectionRow() {
                 <input type="number" class="res-hz" step="0.0001">
             </div>
             <div class="form-group">
-                <label>V (g)</label>
+                <label class="res-v-label">${vLabel}</label>
                 <input type="number" class="res-v" step="0.0001" placeholder="100.00">
             </div>
         </div>
@@ -628,12 +630,14 @@ function handleResectionCalc() {
         if (State.settings.distanceMode === 'manual') {
             // Manual Mode: Slope Dist + Target Height
             const sDist = parseFloat(row.querySelector('.res-sdist').value);
-            // We don't need Tgt Height for Resection 2D pos, only for Z. 
-            // But if we wanted to calculate Reduced distance from Slope, we need V.
-            // Horizontal Distance = Slope * sin(Z_rad)
             if (isNaN(sDist)) return;
             
-            const zRad = MathUtils.gradsToRad(v);
+            let z = v;
+            if(State.settings.vMode === 'alpha') {
+                z = 100 - v;
+            }
+
+            const zRad = MathUtils.gradsToRad(z);
             horizDist = sDist * Math.sin(zRad);
             
         } else {
@@ -680,11 +684,30 @@ function handleApplyResection() {
     const { e, n, ori } = State.tempResection;
     const hi = parseFloat(UI.resHi.value) || 0;
     
-    // Note: Z is not solved by 2D resection. Keeping previous Z.
-    // Ideally we'd solve 1D height too.
+    // For Resection, we don't know the "True Azimuth" to a specific BS without calculation.
+    // The "ori" here IS the Orientation Correction.
+    // To show "Backsight Azimuth" we need a reference point.
+    // We can assume the first target was the BS for display purposes, 
+    // or just set the Orientation Correction.
+    // The Status Bar will show "ORI: [BS Azimuth]". 
+    // If we resected, we don't strictly have a single BS. 
+    // But we can back-calculate: BS Azimuth = Reading to Tgt1 + Correction.
     
+    // Let's use the first resection target as the "Backsight" for the status bar display.
+    const firstRow = UI.resectionList.querySelector('.card');
+    let firstHz = 0;
+    if(firstRow) {
+        firstHz = parseFloat(firstRow.querySelector('.res-hz').value) || 0;
+    }
+    
+    const bsAz = MathUtils.normalizeGrads(firstHz + ori);
+
     State.station = { e, n, z: State.station.z || 0, hi, set: true };
-    State.orientation = { azimuthCorrection: ori, set: true };
+    State.orientation = { 
+        azimuthCorrection: ori, 
+        backSightAzimuth: bsAz,
+        set: true 
+    };
     
     // Prompt to save control points used in resection if they are new
     const rows = UI.resectionList.querySelectorAll('.card');
@@ -746,11 +769,24 @@ function handleSetOrientation() {
 
     const id = UI.stnId.value || "STN";
     State.station = { id, e, n, z, hi, set: true };
-    State.orientation = { azimuthCorrection: correction, set: true };
+    State.orientation = { 
+        azimuthCorrection: correction, 
+        backSightAzimuth: trueAzimuth, // Store for display
+        set: true 
+    };
 
     saveState();
     updateStatus();
-    alert(`Station Set!\nAzimuth to BS: ${trueAzimuth.toFixed(4)}g\nOrientation Cor: ${correction.toFixed(4)}g`);
+    // User Request: Swap terms
+    // "Orientation" -> BS Azimuth
+    // "Azimuth to BS" -> Orientation Cor? Or just show Orientation.
+    // User said: "meant to show the backsight azimuth under the name 'Orientation'"
+    // Alert:
+    // Station Set!
+    // Orientation: [BS Azimuth]
+    // Correction: [Correction]
+    
+    alert(`Station Set!\nOrientation: ${trueAzimuth.toFixed(4)}g\nCorrection: ${correction.toFixed(4)}g`);
 }
 
 function handleMeasurement() {
@@ -843,9 +879,7 @@ function handleMeasurement() {
 }
 
 function handleStakeout() {
-    console.log("handleStakeout called");
     if (!State.station.set || !State.orientation.set) {
-        console.log("Station not set");
         alert("Please set up Station and Orientation first.");
         return;
     }
@@ -912,8 +946,6 @@ function handleStakeout() {
     // Current position calculation
     const azimuthCurrent = MathUtils.normalizeGrads(hz + State.orientation.azimuthCorrection);
     const zCurrent = State.station.z + State.station.hi + dH_component - targetHeight;
-    // const currentPos = MathUtils.polar(State.station.e, State.station.n, azimuthCurrent, horizDistCurrent); 
-    // ^ Don't really need full coords for stakeout deltas unless we want to display them
 
     // Required calculations
     const reqAzimuth = MathUtils.azimuth(State.station.e, State.station.n, target.e, target.n);
@@ -991,7 +1023,8 @@ function updateStatus() {
     }
     
     if (State.orientation.set) {
-        UI.statusOri.textContent = `ORI: ${State.orientation.azimuthCorrection.toFixed(4)}g`;
+        // Display Backsight Azimuth (Orientation)
+        UI.statusOri.textContent = `ORI: ${State.orientation.backSightAzimuth.toFixed(4)}g`;
         UI.statusOri.style.color = "#4caf50";
     } else {
         UI.statusOri.textContent = "ORI: Not Set";
@@ -1147,8 +1180,10 @@ function handleCSVImport(event) {
         
         // Determine format based on header
         const header = lines[0].toLowerCase();
-        // Support: Comma or Tab
-        const sep = header.includes('\t') ? '\t' : ',';
+        // Support: Comma or Tab or Semicolon
+        let sep = ',';
+        if (header.includes('\t')) sep = '\t';
+        if (header.includes(';')) sep = ';';
         
         let map = { id: 0, e: 1, n: 2, z: 3, c: 4 }; // Default standard
         const startIndex = 1; // Always skip header for safety if we detect one
@@ -1157,13 +1192,33 @@ function handleCSVImport(event) {
             const hCols = header.split(sep).map(s => s.trim());
             
             const idxId = hCols.findIndex(c => c === 'id' || c === 'pointid' || c === 'point');
-            const idxE = hCols.findIndex(c => c === 'east' || c === 'e' || c === 'y'); // Y is often East in CAD/Math but user said Y=Easting
-            const idxN = hCols.findIndex(c => c === 'north' || c === 'n' || c === 'x'); // X is often North in Surveying (local grids sometimes)
+            
+            // User Mapping: X -> North, Y -> East
+            // Look for X and Y in header
+            const idxX = hCols.findIndex(c => c === 'x');
+            const idxY = hCols.findIndex(c => c === 'y');
+            
+            const idxE = hCols.findIndex(c => c === 'east' || c === 'e');
+            const idxN = hCols.findIndex(c => c === 'north' || c === 'n');
             const idxZ = hCols.findIndex(c => c === 'elev' || c === 'z' || c === 'h' || c === 'height');
             const idxC = hCols.findIndex(c => c === 'code' || c === 'cd');
 
-            if (idxId >= 0 && idxE >= 0 && idxN >= 0) {
-                map = { id: idxId, e: idxE, n: idxN, z: idxZ, c: idxC };
+            // Prioritize explicit X/Y mapping requested by user
+            let foundE = -1;
+            let foundN = -1;
+
+            if (idxX >= 0 && idxY >= 0) {
+                // X is Nording, Y is Easting
+                foundN = idxX;
+                foundE = idxY;
+            } else {
+                // Fallback to standard names
+                foundE = idxE;
+                foundN = idxN;
+            }
+
+            if (idxId >= 0 && foundE >= 0 && foundN >= 0) {
+                map = { id: idxId, e: foundE, n: foundN, z: idxZ, c: idxC };
             }
         }
 
