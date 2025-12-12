@@ -25,17 +25,17 @@
             <button class="nav-btn" data-tab="stakeout">Stakeout</button>
             <button class="nav-btn" data-tab="calc">Calc</button>
             <button class="nav-btn" data-tab="data">Data</button>
+            <button class="nav-btn" data-tab="settings">Settings</button>
         </nav>
 
         <main id="main-content">
-            <!-- SETUP TAB -->
-            <section id="setup" class="tab-content active">
-                <h2>Station Setup</h2>
-                
+            <!-- SETTINGS TAB -->
+            <section id="settings" class="tab-content">
+                <h2>Settings</h2>
                 <div class="card">
-                    <h3>1. Instrument Settings</h3>
                     <div class="form-group">
-                        <label for="k-factor">Stadia Constant (K)</label>
+                        <label>Stadia Constant (K)</label>
+                        <!-- User requested fixed 100 or dropdown in settings. Keeping dropdown but in settings -->
                         <select id="k-factor">
                             <option value="50">50</option>
                             <option value="100" selected>100</option>
@@ -65,6 +65,11 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- SETUP TAB -->
+            <section id="setup" class="tab-content active">
+                <h2>Station Setup</h2>
 
                 <!-- Setup Mode Switch -->
                 <div style="margin-bottom: 20px; display: flex; gap: 10px;">
@@ -76,6 +81,13 @@
                 <div id="setup-known-point">
                     <div class="card">
                         <h3>2. Station Coordinates</h3>
+                        <div class="form-group">
+                            <label>Station Point ID</label>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="text" id="stn-id" placeholder="Point ID">
+                                <select id="stn-list-select" style="width: 40px;"></select>
+                            </div>
+                        </div>
                         <div class="input-grid">
                             <div class="form-group">
                                 <label>East (E)</label>
@@ -98,6 +110,13 @@
 
                     <div class="card">
                         <h3>3. Backsight Orientation</h3>
+                        <div class="form-group">
+                            <label>Backsight ID (Optional)</label>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="text" id="bs-id" placeholder="BS ID">
+                                <select id="bs-list-select" style="width: 40px;"></select>
+                            </div>
+                        </div>
                         <div class="input-grid">
                             <div class="form-group">
                                 <label>BS East</label>

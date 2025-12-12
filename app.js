@@ -291,9 +291,15 @@ const UI = {
     stnN: document.getElementById('stn-n'),
     stnZ: document.getElementById('stn-z'),
     stnHi: document.getElementById('stn-hi'),
+    stnId: document.getElementById('stn-id'),
+    stnListSelect: document.getElementById('stn-list-select'),
+    
     bsE: document.getElementById('bs-e'),
     bsN: document.getElementById('bs-n'),
     bsHz: document.getElementById('bs-hz'),
+    bsId: document.getElementById('bs-id'),
+    bsListSelect: document.getElementById('bs-list-select'),
+    
     btnSetOri: document.getElementById('btn-set-orientation'),
 
     // Resection
@@ -391,6 +397,8 @@ function setupEventListeners() {
 
     // Setup
     UI.btnSetOri.addEventListener('click', handleSetOrientation);
+    UI.stnListSelect.addEventListener('change', () => fillCoordsFromList(UI.stnListSelect, UI.stnId, UI.stnE, UI.stnN, UI.stnZ));
+    UI.bsListSelect.addEventListener('change', () => fillCoordsFromList(UI.bsListSelect, UI.bsId, UI.bsE, UI.bsN));
     
     // Setup Mode Toggles
     UI.modeKnown.addEventListener('click', () => toggleSetupMode('known'));
@@ -540,10 +548,15 @@ function addResectionRow() {
 
     div.innerHTML = `
         <div class="form-group">
-            <label>Target Point</label>
-            <div class="select-container"></div> 
+            <label>Target ID (Auto-fill on blur)</label>
+            <input type="text" class="res-target-id" placeholder="Point ID">
         </div>
-        
+        <div class="input-grid three-col" style="background: #eef; padding: 5px; border-radius: 4px; margin-bottom: 5px;">
+            <div class="form-group"><label>East</label><input type="number" class="res-e" step="0.001"></div>
+            <div class="form-group"><label>North</label><input type="number" class="res-n" step="0.001"></div>
+            <div class="form-group"><label>Height</label><input type="number" class="res-z" step="0.001"></div>
+        </div>
+
         <div class="input-grid three-col res-stadia-inputs" style="display: ${State.settings.distanceMode === 'manual' ? 'none' : 'grid'}">
             <div class="form-group"><label>Top</label><input type="number" class="res-top" step="0.001"></div>
             <div class="form-group"><label>Mid</label><input type="number" class="res-mid" step="0.001"></div>
@@ -568,8 +581,16 @@ function addResectionRow() {
         <button class="action-btn sm danger remove-row" style="margin-top:5px;">Remove</button>
     `;
     
-    // Inject select
-    div.querySelector('.select-container').appendChild(select);
+    // Auto-fill logic
+    div.querySelector('.res-target-id').addEventListener('blur', (e) => {
+        const id = e.target.value;
+        const pt = State.points.find(p => p.id === id);
+        if(pt) {
+            div.querySelector('.res-e').value = pt.e;
+            div.querySelector('.res-n').value = pt.n;
+            div.querySelector('.res-z').value = pt.z;
+        }
+    });
     
     div.querySelector('.remove-row').addEventListener('click', () => {
         div.remove();
@@ -590,15 +611,17 @@ function handleResectionCalc() {
     let error = false;
 
     rows.forEach(row => {
-        const pid = row.querySelector('.res-target').value;
+        const pid = row.querySelector('.res-target-id').value;
+        const e = parseFloat(row.querySelector('.res-e').value);
+        const n = parseFloat(row.querySelector('.res-n').value);
         const hz = parseFloat(row.querySelector('.res-hz').value);
         const vInput = row.querySelector('.res-v').value;
         const v = vInput ? parseFloat(vInput) : 100.0;
         
-        if (!pid || isNaN(hz)) return;
+        if (!pid || isNaN(e) || isNaN(n) || isNaN(hz)) return;
 
-        const pt = State.points.find(p => p.id === pid);
-        if(!pt) return;
+        // Use manually entered coordinates
+        const pt = { e, n };
 
         let horizDist = 0;
 
@@ -657,24 +680,44 @@ function handleApplyResection() {
     const { e, n, ori } = State.tempResection;
     const hi = parseFloat(UI.resHi.value) || 0;
     
-    // Note: Resection usually solves 2D. Height is separate.
-    // If we want Z, we need Z of targets + Delta H.
-    // Z_stn = Z_tgt - dH + hi - mid
-    // Simple average of Z from all targets?
-    // Let's keep Z as 0 or user input? 
-    // The current UI shows E, N. I'll leave Z as 0 (or previous value).
+    // Note: Z is not solved by 2D resection. Keeping previous Z.
+    // Ideally we'd solve 1D height too.
     
-    State.station = { e, n, z: 0, hi, set: true };
+    State.station = { e, n, z: State.station.z || 0, hi, set: true };
     State.orientation = { azimuthCorrection: ori, set: true };
     
+    // Prompt to save control points used in resection if they are new
+    const rows = UI.resectionList.querySelectorAll('.card');
+    let savedCount = 0;
+    
+    if(confirm("Do you want to save any new control points to your list?")) {
+        rows.forEach(row => {
+            const id = row.querySelector('.res-target-id').value;
+            const eVal = parseFloat(row.querySelector('.res-e').value);
+            const nVal = parseFloat(row.querySelector('.res-n').value);
+            const zVal = parseFloat(row.querySelector('.res-z').value) || 0;
+            
+            // Check if exists
+            const existing = State.points.find(p => p.id === id);
+            if (!existing && id && !isNaN(eVal) && !isNaN(nVal)) {
+                State.points.push({
+                    id, e: eVal, n: nVal, z: zVal, code: 'CTRL', ts: new Date().toISOString()
+                });
+                savedCount++;
+            }
+        });
+    }
+
     saveState();
     updateStatus();
+    renderData();
+    populateSelects();
     
     // Update inputs to reflect
     UI.stnE.value = e.toFixed(3);
     UI.stnN.value = n.toFixed(3);
     
-    alert("Station and Orientation updated from Resection.");
+    alert(`Station Set! Added ${savedCount} new control points.`);
 }
 
 function handleSetOrientation() {
@@ -701,7 +744,8 @@ function handleSetOrientation() {
     let correction = trueAzimuth - bsHz;
     correction = MathUtils.normalizeGrads(correction);
 
-    State.station = { e, n, z, hi, set: true };
+    const id = UI.stnId.value || "STN";
+    State.station = { id, e, n, z, hi, set: true };
     State.orientation = { azimuthCorrection: correction, set: true };
 
     saveState();
@@ -938,11 +982,21 @@ function loadState() {
 }
 
 function updateStatus() {
-    UI.statusStn.textContent = State.station.set ? "STN: Set" : "STN: Not Set";
-    UI.statusStn.style.color = State.station.set ? "#4caf50" : "#aaa";
+    if (State.station.set) {
+        UI.statusStn.textContent = `STN: ${State.station.id || 'Set'}`;
+        UI.statusStn.style.color = "#4caf50";
+    } else {
+        UI.statusStn.textContent = "STN: Not Set";
+        UI.statusStn.style.color = "#aaa";
+    }
     
-    UI.statusOri.textContent = State.orientation.set ? "ORI: Set" : "ORI: Not Set";
-    UI.statusOri.style.color = State.orientation.set ? "#4caf50" : "#aaa";
+    if (State.orientation.set) {
+        UI.statusOri.textContent = `ORI: ${State.orientation.azimuthCorrection.toFixed(4)}g`;
+        UI.statusOri.style.color = "#4caf50";
+    } else {
+        UI.statusOri.textContent = "ORI: Not Set";
+        UI.statusOri.style.color = "#aaa";
+    }
 }
 
 function renderData() {
@@ -961,7 +1015,17 @@ function renderData() {
         const tdZ = document.createElement('td'); tdZ.textContent = p.z.toFixed(3);
         const tdC = document.createElement('td'); tdC.textContent = p.code;
         
-        tr.append(tdId, tdE, tdN, tdZ, tdC);
+        // Delete button
+        const tdAction = document.createElement('td');
+        const btnDel = document.createElement('button');
+        btnDel.textContent = '❌';
+        btnDel.className = 'action-btn sm danger';
+        btnDel.style.padding = '2px 6px';
+        btnDel.title = 'Delete Point';
+        btnDel.onclick = () => deletePoint(p.id);
+        tdAction.appendChild(btnDel);
+
+        tr.append(tdId, tdE, tdN, tdZ, tdC, tdAction);
         UI.dataTableBody.appendChild(tr);
 
         // Calc List Item
@@ -987,6 +1051,46 @@ function populateSelects() {
         opt.textContent = p.id;
         UI.soTargetSelect.appendChild(opt);
     });
+
+    populatePointSelects();
+}
+
+function populatePointSelects() {
+    // Helper to fill small dropdowns
+    const selects = [UI.stnListSelect, UI.bsListSelect];
+    selects.forEach(sel => {
+        if(!sel) return;
+        sel.innerHTML = '<option value="">...</option>';
+        State.points.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.id;
+            sel.appendChild(opt);
+        });
+    });
+}
+
+function fillCoordsFromList(selectEl, idEl, eEl, nEl, zEl) {
+    const pid = selectEl.value;
+    if (!pid) return;
+    
+    const pt = State.points.find(p => p.id === pid);
+    if (pt) {
+        if(idEl) idEl.value = pt.id;
+        if(eEl) eEl.value = pt.e;
+        if(nEl) nEl.value = pt.n;
+        if(zEl) zEl.value = pt.z;
+    }
+    selectEl.value = ""; // Reset
+}
+
+function deletePoint(id) {
+    if(confirm(`Are you sure you want to delete point ${id}?`)) {
+        State.points = State.points.filter(p => p.id !== id);
+        saveState();
+        renderData();
+        populateSelects();
+    }
 }
 
 function updateStakeoutTargetInfo() {
