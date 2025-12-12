@@ -203,14 +203,49 @@
             <section id="stakeout" class="tab-content">
                 <h2>Stakeout</h2>
                 <div class="card">
+                    
+                    <!-- Stakeout Mode Switch -->
                     <div class="form-group">
-                        <label>Target Point</label>
-                        <select id="so-target-select">
-                            <option value="">Select Point...</option>
-                        </select>
+                        <label>Target Source</label>
+                        <div style="display: flex; gap: 15px;">
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="so-mode" value="list" checked> From List
+                            </label>
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="so-mode" value="manual"> Manual Input
+                            </label>
+                        </div>
                     </div>
-                    <div id="so-target-info" style="display:none; font-size: 0.9em; color: #666; margin-bottom: 10px;">
-                        Target: E <span id="so-tgt-e"></span> N <span id="so-tgt-n"></span>
+
+                    <!-- Target Selection: From List -->
+                    <div id="so-source-list">
+                        <div class="form-group">
+                            <label>Select Point</label>
+                            <select id="so-target-select">
+                                <option value="">Select Point...</option>
+                            </select>
+                        </div>
+                        <div id="so-target-info" style="display:none; font-size: 0.9em; color: #666; margin-bottom: 10px;">
+                            Target: E <span id="so-tgt-e"></span> N <span id="so-tgt-n"></span>
+                        </div>
+                    </div>
+
+                    <!-- Target Selection: Manual Input -->
+                    <div id="so-source-manual" style="display: none;">
+                        <div class="input-grid three-col">
+                            <div class="form-group">
+                                <label>East</label>
+                                <input type="number" id="so-manual-e" step="0.001">
+                            </div>
+                            <div class="form-group">
+                                <label>North</label>
+                                <input type="number" id="so-manual-n" step="0.001">
+                            </div>
+                            <div class="form-group">
+                                <label>Height</label>
+                                <input type="number" id="so-manual-z" step="0.001">
+                            </div>
+                        </div>
                     </div>
 
                     <h3>Current Readings</h3>
@@ -295,6 +330,9 @@
             <section id="data" class="tab-content">
                 <h2>Data Manager</h2>
                 <div class="toolbar">
+                    <button id="btn-import" class="action-btn sm" style="background: #28a745;">Import CSV</button>
+                    <input type="file" id="file-import" accept=".csv" style="display: none;">
+                    
                     <button id="btn-export" class="action-btn sm">Export CSV</button>
                     <button id="btn-clear" class="action-btn sm danger">Clear All</button>
                 </div>

@@ -326,6 +326,13 @@ const UI = {
     soTop: document.getElementById('so-top'),
     soMid: document.getElementById('so-mid'),
     soBot: document.getElementById('so-bot'),
+    soSourceInputs: document.querySelectorAll('input[name="so-mode"]'),
+    soSourceListDiv: document.getElementById('so-source-list'),
+    soSourceManualDiv: document.getElementById('so-source-manual'),
+    soManualE: document.getElementById('so-manual-e'),
+    soManualN: document.getElementById('so-manual-n'),
+    soManualZ: document.getElementById('so-manual-z'),
+    
     soSDist: document.getElementById('so-sdist'),
     soHr: document.getElementById('so-hr'),
     soHz: document.getElementById('so-hz'),
@@ -344,6 +351,8 @@ const UI = {
 
     // Data
     dataTableBody: document.querySelector('#data-table tbody'),
+    btnImport: document.getElementById('btn-import'),
+    fileImport: document.getElementById('file-import'),
     btnExport: document.getElementById('btn-export'),
     btnClear: document.getElementById('btn-clear')
 };
@@ -351,11 +360,13 @@ const UI = {
 // --- LOGIC ---
 
 function init() {
+    console.log("App init starting...");
     loadState();
     setupEventListeners();
     renderData();
     updateStatus();
     populateSelects();
+    console.log("App init done.");
 }
 
 function setupEventListeners() {
@@ -414,6 +425,21 @@ function setupEventListeners() {
     });
     // Init state
     State.settings.distanceMode = 'stadia'; 
+    State.settings.stakeoutSource = 'list';
+
+    // Stakeout Source Toggle
+    UI.soSourceInputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+            if(e.target.checked) {
+                State.settings.stakeoutSource = e.target.value;
+                updateInputVisibility();
+            }
+        });
+    });
+
+    // Data Import
+    UI.btnImport.addEventListener('click', () => UI.fileImport.click());
+    UI.fileImport.addEventListener('change', handleCSVImport);
 }
 
 function updateInputVisibility() {
@@ -423,9 +449,14 @@ function updateInputVisibility() {
     UI.surveyStadiaDiv.style.display = isManual ? 'none' : 'grid';
     UI.surveyManualDiv.style.display = isManual ? 'grid' : 'none';
     
-    // Stakeout
+    // Stakeout Readings
     UI.soStadiaDiv.style.display = isManual ? 'none' : 'grid';
     UI.soManualDiv.style.display = isManual ? 'grid' : 'none';
+
+    // Stakeout Source
+    const isSoManual = State.settings.stakeoutSource === 'manual';
+    UI.soSourceListDiv.style.display = isSoManual ? 'none' : 'block';
+    UI.soSourceManualDiv.style.display = isSoManual ? 'block' : 'none';
     
     // Resection - Update dynamic rows if any
     const resRows = UI.resectionList.querySelectorAll('.card');
@@ -627,6 +658,7 @@ function handleApplyResection() {
 }
 
 function handleSetOrientation() {
+    console.log("Setting Orientation...");
     const e = parseFloat(UI.stnE.value);
     const n = parseFloat(UI.stnN.value);
     const z = parseFloat(UI.stnZ.value) || 0;
@@ -742,16 +774,30 @@ function handleMeasurement() {
 }
 
 function handleStakeout() {
+    console.log("handleStakeout called");
     if (!State.station.set || !State.orientation.set) {
+        console.log("Station not set");
         alert("Please set up Station and Orientation first.");
         return;
     }
 
-    const targetId = UI.soTargetSelect.value;
-    if (!targetId) return;
+    let target;
 
-    const target = State.points.find(p => p.id === targetId);
-    if (!target) return;
+    if (State.settings.stakeoutSource === 'manual') {
+        const e = parseFloat(UI.soManualE.value);
+        const n = parseFloat(UI.soManualN.value);
+        const z = parseFloat(UI.soManualZ.value);
+        if (isNaN(e) || isNaN(n) || isNaN(z)) {
+            alert("Please fill Target Coordinates.");
+            return;
+        }
+        target = { e, n, z };
+    } else {
+        const targetId = UI.soTargetSelect.value;
+        if (!targetId) return;
+        target = State.points.find(p => p.id === targetId);
+        if (!target) return;
+    }
 
     const hz = parseFloat(UI.soHz.value);
     const v = parseFloat(UI.soV.value);
@@ -953,6 +999,57 @@ function exportCSV() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+}
+
+function handleCSVImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const text = e.target.result;
+        const lines = text.split('\n');
+        
+        let importedCount = 0;
+        
+        // Skip header if present (check for 'PointID' or 'East')
+        const startIndex = (lines[0] && lines[0].toLowerCase().includes('east')) ? 1 : 0;
+
+        for (let i = startIndex; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            
+            const cols = line.split(',');
+            if (cols.length < 3) continue; // Need at least ID, E, N
+            
+            // Format: ID, East, North, Elev, Code
+            const id = cols[0].trim();
+            const eVal = parseFloat(cols[1]);
+            const nVal = parseFloat(cols[2]);
+            const zVal = parseFloat(cols[3]) || 0;
+            const code = cols[4] ? cols[4].trim() : '';
+            
+            if (isNaN(eVal) || isNaN(nVal)) continue;
+            
+            // Check if exists
+            const existingIndex = State.points.findIndex(p => p.id === id);
+            const point = { id, e: eVal, n: nVal, z: zVal, code, ts: new Date().toISOString() };
+            
+            if (existingIndex >= 0) {
+                State.points[existingIndex] = point; // Overwrite
+            } else {
+                State.points.push(point);
+            }
+            importedCount++;
+        }
+        
+        saveState();
+        renderData();
+        populateSelects();
+        alert(`Imported ${importedCount} points.`);
+        UI.fileImport.value = ''; // Reset input
+    };
+    reader.readAsText(file);
 }
 
 // Start
