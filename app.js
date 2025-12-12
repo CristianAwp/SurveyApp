@@ -15,23 +15,31 @@ const MathUtils = {
 
     // Calculate Horizontal Distance from Stadia
     // D = K * (Top - Bottom) * sin^2(Zenith)
-    calcDist: (top, bot, zenithGrads, k) => {
+    calcDist: (top, bot, vInput, k) => {
         const intercept = top - bot;
-        const zRad = MathUtils.gradsToRad(zenithGrads);
+        
+        let z = vInput;
+        if(State.settings.vMode === 'alpha') {
+            z = 100 - vInput;
+        }
+        
+        const zRad = MathUtils.gradsToRad(z);
         return k * intercept * Math.pow(Math.sin(zRad), 2);
     },
 
     // Calculate Vertical Difference (dH) from Station Axis to Target Axis (at mid wire)
     // V = 0.5 * K * (top - bot) * sin(2*Zenith)
-    // Alternatively: V = D_slope * cos(Zenith) ... wait, standard formula:
-    // dH = D_horiz / tan(Zenith)
-    // Let's use the explicit stadia formula:
-    // dH = 0.5 * K * (top - bot) * sin(2 * zRad)
     // Note: This dH is from Instrument Axis to Target axis (where mid wire is).
     // Total Height Diff = dH + InstHeight - MidWireReading
-    calcVertDiffComponent: (top, bot, zenithGrads, k) => {
+    calcVertDiffComponent: (top, bot, vInput, k) => {
         const intercept = top - bot;
-        const zRad = MathUtils.gradsToRad(zenithGrads);
+        
+        let z = vInput;
+        if(State.settings.vMode === 'alpha') {
+            z = 100 - vInput;
+        }
+
+        const zRad = MathUtils.gradsToRad(z);
         return 0.5 * k * intercept * Math.sin(2 * zRad);
     },
 
@@ -271,6 +279,7 @@ const UI = {
     // Inputs - Setup
     kFactor: document.getElementById('k-factor'),
     distModeInputs: document.querySelectorAll('input[name="dist-mode"]'),
+    vModeInputs: document.querySelectorAll('input[name="v-mode"]'),
     // Mode Switch
     modeKnown: document.getElementById('mode-known'),
     modeResection: document.getElementById('mode-resection'),
@@ -426,6 +435,17 @@ function setupEventListeners() {
     // Init state
     State.settings.distanceMode = 'stadia'; 
     State.settings.stakeoutSource = 'list';
+    State.settings.vMode = 'zenith';
+
+    // V-Mode Toggle
+    UI.vModeInputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+            if(e.target.checked) {
+                State.settings.vMode = e.target.value;
+                // Maybe update labels to say V (Z) or V (a)?
+            }
+        });
+    });
 
     // Stakeout Source Toggle
     UI.soSourceInputs.forEach(input => {
@@ -716,7 +736,12 @@ function handleMeasurement() {
         }
         
         // Manual Calc
-        const zRad = MathUtils.gradsToRad(v);
+        let z = v;
+        if(State.settings.vMode === 'alpha') {
+            z = 100 - v;
+        }
+        
+        const zRad = MathUtils.gradsToRad(z);
         horizDist = sDist * Math.sin(zRad);
         // Vertical Diff (Inst Axis to Target Axis) = sDist * cos(Z)
         // dH_component (Inst Axis to Target Center)
@@ -817,8 +842,12 @@ function handleStakeout() {
             alert("Please fill Slope Distance and Target Height.");
             return;
         }
+        let z = v;
+        if(State.settings.vMode === 'alpha') {
+            z = 100 - v;
+        }
         
-        const zRad = MathUtils.gradsToRad(v);
+        const zRad = MathUtils.gradsToRad(z);
         horizDistCurrent = sDist * Math.sin(zRad);
         dH_component = sDist * Math.cos(zRad);
         targetHeight = hr;
@@ -1012,22 +1041,40 @@ function handleCSVImport(event) {
         
         let importedCount = 0;
         
-        // Skip header if present (check for 'PointID' or 'East')
-        const startIndex = (lines[0] && lines[0].toLowerCase().includes('east')) ? 1 : 0;
+        // Determine format based on header
+        const header = lines[0].toLowerCase();
+        // Support: Comma or Tab
+        const sep = header.includes('\t') ? '\t' : ',';
+        
+        let map = { id: 0, e: 1, n: 2, z: 3, c: 4 }; // Default standard
+        const startIndex = 1; // Always skip header for safety if we detect one
+
+        if (header.includes('id') || header.includes('point')) {
+            const hCols = header.split(sep).map(s => s.trim());
+            
+            const idxId = hCols.findIndex(c => c === 'id' || c === 'pointid' || c === 'point');
+            const idxE = hCols.findIndex(c => c === 'east' || c === 'e' || c === 'y'); // Y is often East in CAD/Math but user said Y=Easting
+            const idxN = hCols.findIndex(c => c === 'north' || c === 'n' || c === 'x'); // X is often North in Surveying (local grids sometimes)
+            const idxZ = hCols.findIndex(c => c === 'elev' || c === 'z' || c === 'h' || c === 'height');
+            const idxC = hCols.findIndex(c => c === 'code' || c === 'cd');
+
+            if (idxId >= 0 && idxE >= 0 && idxN >= 0) {
+                map = { id: idxId, e: idxE, n: idxN, z: idxZ, c: idxC };
+            }
+        }
 
         for (let i = startIndex; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
             
-            const cols = line.split(',');
-            if (cols.length < 3) continue; // Need at least ID, E, N
+            const cols = line.split(sep);
+            if (cols.length < 2) continue; 
             
-            // Format: ID, East, North, Elev, Code
-            const id = cols[0].trim();
-            const eVal = parseFloat(cols[1]);
-            const nVal = parseFloat(cols[2]);
-            const zVal = parseFloat(cols[3]) || 0;
-            const code = cols[4] ? cols[4].trim() : '';
+            const id = cols[map.id].trim();
+            const eVal = parseFloat(cols[map.e]);
+            const nVal = parseFloat(cols[map.n]);
+            const zVal = (map.z >= 0) ? (parseFloat(cols[map.z]) || 0) : 0;
+            const code = (map.c >= 0 && cols[map.c]) ? cols[map.c].trim() : '';
             
             if (isNaN(eVal) || isNaN(nVal)) continue;
             
