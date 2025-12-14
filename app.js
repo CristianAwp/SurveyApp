@@ -771,22 +771,13 @@ function handleSetOrientation() {
     State.station = { id, e, n, z, hi, set: true };
     State.orientation = { 
         azimuthCorrection: correction, 
-        backSightAzimuth: trueAzimuth, // Store for display
         set: true 
     };
 
     saveState();
     updateStatus();
-    // User Request: Swap terms
-    // "Orientation" -> BS Azimuth
-    // "Azimuth to BS" -> Orientation Cor? Or just show Orientation.
-    // User said: "meant to show the backsight azimuth under the name 'Orientation'"
-    // Alert:
-    // Station Set!
-    // Orientation: [BS Azimuth]
-    // Correction: [Correction]
     
-    alert(`Station Set!\nOrientation: ${trueAzimuth.toFixed(4)}g\nCorrection: ${correction.toFixed(4)}g`);
+    alert(`Station Set!\nAzimuth to BS: ${trueAzimuth.toFixed(4)}g\nOrientation Cor: ${correction.toFixed(4)}g`);
 }
 
 function handleMeasurement() {
@@ -1023,8 +1014,7 @@ function updateStatus() {
     }
     
     if (State.orientation.set) {
-        // Display Backsight Azimuth (Orientation)
-        UI.statusOri.textContent = `ORI: ${State.orientation.backSightAzimuth.toFixed(4)}g`;
+        UI.statusOri.textContent = `ORI: ${State.orientation.azimuthCorrection.toFixed(4)}g`;
         UI.statusOri.style.color = "#4caf50";
     } else {
         UI.statusOri.textContent = "ORI: Not Set";
